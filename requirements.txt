@@ -1,0 +1,21 @@
+# 校园墙同步服务依赖
+
+# Web框架
+Flask>=2.3.0
+Werkzeug>=2.3.0
+
+# HTTP请求
+requests>=2.31.0
+
+# 配置管理
+PyYAML>=6.0
+
+# 可选：AI审核（如果需要）
+# openai>=1.0.0
+
+# 可选：敏感词库
+# flashtext>=2.1.0
+
+# 开发/测试
+pytest>=7.0.0
+pytest-cov>=4.0.0

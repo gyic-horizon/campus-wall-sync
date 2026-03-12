@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  campus-wall-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: campus-wall-sync
+    restart: unless-stopped
+    
+    # 环境变量配置（生产环境建议用 .env 文件）
+    environment:
+      - CONFIG_PATH=/app/config.json
+      - PYTHONUNBUFFERED=1
+    
+    # 端口映射：宿主机5000 -> 容器5000
+    ports:
+      - "5000:5000"
+    
+    # 配置文件挂载（配置与代码分离）
+    volumes:
+      - ./config.json:/app/config.json:ro
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# 网络配置（如果需要连接其他服务）
+networks:
+  default:
+    name: campus-network

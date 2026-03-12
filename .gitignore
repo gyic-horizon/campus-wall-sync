@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 环境配置
+.env
+.env.local
+
+# 配置文件（不要提交包含密钥的配置文件）
+config.json
+*.local.json
+
+# 日志
+*.log
+logs/
+
+# Docker
+.docker/
