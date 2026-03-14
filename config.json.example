@@ -13,9 +13,12 @@
         "default_category": "表白墙",
         "default_tags": ["投稿", "校园墙"]
     },
-    "questionnaire": {
-        "webhook_token": "your-questionnaire-webhook-token",
-        "enabled": true
+    "tduck": {
+        "enabled": true,
+        "webhook_secret": "your-tduck-webhook-secret",
+        "api_key": "your-tduck-api-key",
+        "form_key": "your-form-key",
+        "base_url": "https://x.tduckcloud.com"
     },
     "review": {
         "enable_ai_review": false,

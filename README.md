@@ -1,6 +1,6 @@
 # campus-wall-sync 校园墙同步服务
 
-将问卷星收到的投稿自动同步到 Halo 博客，支持人工/AI 审核。
+将 tduck 表单收到的投稿自动同步到 Halo 博客，支持人工/AI 审核。
 
 ## 协作分工
 
@@ -10,7 +10,7 @@
 ├─────────────────────────┬───────────────────────────────────┤
 │      开发组（学生）       │            运维组                  │
 │  只改 src/hooks/ 目录    │     只管部署和基础设施              │
-│  • 问卷解析逻辑           │     • Docker/1Panel               │
+│  • 表单解析逻辑           │     • Docker/1Panel               │
 │  • 敏感词过滤            │     • 服务器维护                   │
 │  • AI审核配置           │     • CI/CD 流水线                 │
 │  • 业务流程调整          │     • 监控告警                     │
@@ -53,8 +53,11 @@ cp config.json.example config.json
         "api_url": "https://你的Halo博客地址",
         "api_token": "你的API Token"
     },
-    "questionnaire": {
-        "webhook_token": "问卷星Webhook Token"
+    "tduck": {
+        "enabled": true,
+        "api_key": "你的tduck API Key",
+        "form_key": "你的表单key",
+        "base_url": "https://x.tduckcloud.com"
     },
     "review": {
         "enable_ai_review": false
@@ -70,7 +73,43 @@ python -m src.app
 
 服务启动后访问：
 - 健康检查: http://localhost:5000/health
-- 问卷Webhook: http://localhost:5000/webhook/questionnaire
+- tduck Webhook: http://localhost:5000/webhook/tduck
+- 查看字段定义: http://localhost:5000/api/tduck/fields
+
+## tduck 表单配置
+
+### 1. 获取 API Key
+
+在 tduck 后台 → 表单设置 → API 设置 中获取：
+- **API Key**: 用于访问数据同步 API
+- **Form Key**: 表单唯一标识
+
+### 2. 配置 Webhook
+
+在 tduck 后台 → 表单设置 → Webhook 推送：
+
+- **推送地址**: `http://your-server:5000/webhook/tduck`
+- **请求方式**: POST
+- **Content-Type**: application/json
+
+### 3. 查看字段定义
+
+启动服务后访问：
+```
+GET http://localhost:5000/api/tduck/fields
+```
+
+返回示例：
+```json
+{
+    "status": "success",
+    "fields": [
+        {"value": "input1773416359370", "label": "班级", "type": "INPUT"},
+        {"value": "input1773416363353", "label": "姓名", "type": "INPUT"},
+        {"value": "textarea1773416364971", "label": "投稿内容", "type": "TEXTAREA"}
+    ]
+}
+```
 
 ## 开发指南
 
@@ -80,33 +119,60 @@ python -m src.app
 
 | 文件 | 功能 | 修改时机 |
 |------|------|----------|
-| `questionnaire_parser.py` | 解析问卷数据 | 问卷题目有变化时 |
+| `questionnaire_parser.py` | 解析 tduck 表单数据 | 表单字段有变化时 |
 | `content_filter.py` | 敏感词过滤 | 需要调整审核规则时 |
 | `ai_review.py` | AI审核 | 需要接入AI服务时 |
 
-### 开发示例
+### 配置表单字段映射
 
-**修改问卷解析逻辑：**
+**修改 `src/hooks/questionnaire_parser.py`：**
 
 ```python
-# src/hooks/questionnaire_parser.py
+# ========================================
+# tduck 字段映射配置
+# 【重要】根据你的 tduck 表单修改下面的字段ID！
+# ========================================
 
-# 修改字段映射
-FIELD_TITLE = "你的标题字段名"
-FIELD_CONTENT = "你的内容字段名"
+# tduck 表单字段ID（从 /api/tduck/fields 接口查看）
+FIELD_CLASS = "input1773416359370"      # 班级字段ID
+FIELD_NAME = "input1773416363353"       # 姓名字段ID
+FIELD_CONTENT = "textarea1773416364971" # 投稿内容字段ID
 ```
 
-**添加敏感词：**
+### 添加敏感词
+
+**修改 `src/hooks/content_filter.py`：**
 
 ```python
-# src/hooks/content_filter.py
-
 SENSITIVE_WORDS = [
     "敏感词1",
     "敏感词2",
     # 添加更多...
 ]
 ```
+
+### 数据同步 API
+
+#### 手动同步历史数据
+
+```bash
+# 同步所有数据
+POST http://localhost:5000/api/tduck/sync
+
+# 同步指定时间范围的数据
+POST http://localhost:5000/api/tduck/sync
+Content-Type: application/json
+
+{
+    "start_time": "2026-03-01 00:00:00",
+    "end_time": "2026-03-14 23:59:59"
+}
+```
+
+#### tduck 数据同步 API 说明
+
+- **字段同步 API**: `GET /tduck-api/sync/form/fields?apiKey=xxx`
+- **全量数据同步 API**: `GET /tduck-api/sync/form/data?apiKey=xxx&page=1&size=10`
 
 ## 部署指南（运维组）
 
@@ -144,7 +210,7 @@ campus-wall-sync/
 │   ├── config.py            # 配置管理
 │   ├── services/            # 服务层
 │   │   ├── halo_client.py   # Halo API 客户端
-│   │   └── questionnaire.py # 问卷服务
+│   │   └── tduck_client.py  # tduck API 客户端
 │   ├── hooks/               # 【业务钩子】开发组主要修改这里
 │   │   ├── questionnaire_parser.py
 │   │   ├── content_filter.py
@@ -159,6 +225,17 @@ campus-wall-sync/
 └── config.json.example     # 配置示例
 ```
 
+## API 端点列表
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/health` | GET | 健康检查 |
+| `/webhook/tduck` | POST | tduck Webhook 接收 |
+| `/api/tduck/fields` | GET | 获取表单字段定义 |
+| `/api/tduck/sync` | POST | 手动触发数据同步 |
+| `/test/halo` | GET | 测试 Halo 连接 |
+| `/test/tduck` | GET | 测试 tduck 连接 |
+
 ## 常见问题
 
 **Q: 开发组需要会 Docker 吗？**
@@ -170,13 +247,23 @@ A: 本地运行 `python -m src.app`，然后用 curl 测试 webhook 接口。
 **Q: 如何连接测试环境的 Halo？**
 A: 修改 `config.json` 中的 `halo.api_url` 和 `halo.api_token` 即可。
 
+**Q: tduck 的字段 ID 在哪里查看？**
+A: 启动服务后访问 `http://localhost:5000/api/tduck/fields`，或查看 tduck 后台的表单设计器。
+
+**Q: 如何从问卷星迁移到 tduck？**
+A: 
+1. 在 tduck 创建新表单
+2. 更新 `config.json` 中的 tduck 配置
+3. 修改 `questionnaire_parser.py` 中的字段映射
+4. 使用 `/api/tduck/sync` 接口同步历史数据
+
 ## 技术栈
 
 - **后端**: Python 3.11 + Flask
 - **部署**: Docker + 1Panel
 - **CI/CD**: GitHub Actions
 - **博客系统**: Halo
-- **问卷系统**: 问卷星
+- **表单系统**: tduck
 
 ## 许可证
 
