@@ -105,6 +105,15 @@ class Config:
         """获取审核配置"""
         return self._config_data.get("review", {})
 
+    @property
+    def database(self) -> Dict[str, Any]:
+        """获取数据库配置"""
+        return self._config_data.get("database", {})
 
-# 创建全局配置实例
+    @property
+    def tduck(self) -> Dict[str, Any]:
+        """获取 tduck 配置"""
+        return self._config_data.get("tduck", {})
+
+
 config = Config()

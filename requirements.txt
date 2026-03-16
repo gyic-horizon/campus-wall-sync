@@ -10,6 +10,9 @@ requests>=2.31.0
 # 配置管理
 PyYAML>=6.0
 
+# 数据库
+SQLAlchemy>=2.0.0
+
 # 可选：AI审核（如果需要）
 # openai>=1.0.0
 

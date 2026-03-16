@@ -5,6 +5,10 @@
         "port": 5000,
         "log_level": "INFO"
     },
+    "database": {
+        "path": "data/campus_wall.db",
+        "echo": false
+    },
     "halo": {
         "api_url": "https://your-halo-site.com",
         "api_token": "your-api-token-here",

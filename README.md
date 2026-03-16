@@ -1,6 +1,30 @@
 # campus-wall-sync 校园墙同步服务
 
-将 tduck 表单收到的投稿自动同步到 Halo 博客，支持人工/AI 审核。
+将 tduck 表单收到的投稿自动存入数据库，支持人工/AI 审核，后续可同步到 Halo 博客。
+
+## 工作流程
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        投稿处理流程                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  tduck 表单提交                                                 │
+│      ↓                                                          │
+│  Webhook 触发 → 本服务接收                                       │
+│      ↓                                                          │
+│  解析表单数据 (questionnaire_parser.py)                          │
+│      ↓                                                          │
+│  敏感词过滤 (content_filter.py)                                  │
+│      ↓                                                          │
+│  AI 审核 (ai_review.py，可选)                                    │
+│      ↓                                                          │
+│  存入数据库 (状态: pending)                                      │
+│      ↓                                                          │
+│  [后续] 手动/自动同步到 Halo 博客                                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## 协作分工
 
@@ -49,6 +73,10 @@ cp config.json.example config.json
         "host": "0.0.0.0",
         "port": 5000
     },
+    "database": {
+        "path": "data/campus_wall.db",
+        "echo": false
+    },
     "halo": {
         "api_url": "https://你的Halo博客地址",
         "api_token": "你的API Token"
@@ -74,7 +102,79 @@ python -m src.app
 服务启动后访问：
 - 健康检查: http://localhost:5000/health
 - tduck Webhook: http://localhost:5000/webhook/tduck
+- 投稿列表: http://localhost:5000/api/posts
 - 查看字段定义: http://localhost:5000/api/tduck/fields
+
+## API 接口
+
+### 投稿管理
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/posts` | GET | 获取投稿列表（支持分页、状态筛选） |
+| `/api/posts/<id>` | GET | 获取单条投稿详情 |
+| `/api/posts/<id>/reject` | POST | 拒绝投稿（标记为 rejected） |
+| `/api/posts/sync-to-halo` | POST | 将投稿同步到 Halo 博客 |
+
+### tduck 相关
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/webhook/tduck` | POST | 接收 tduck Webhook |
+| `/api/tduck/sync` | POST | 手动同步 tduck 历史数据 |
+| `/api/tduck/fields` | GET | 获取表单字段定义 |
+
+### 测试接口
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/health` | GET | 健康检查 |
+| `/test/halo` | GET | 测试 Halo 连接 |
+| `/test/tduck` | GET | 测试 tduck API 连接 |
+
+## 投稿状态
+
+| 状态 | 说明 |
+|------|------|
+| `pending` | 待同步到 Halo |
+| `synced` | 已同步到 Halo |
+| `rejected` | 已拒绝（不再同步） |
+
+## 同步到 Halo
+
+### 方式一：每条投稿创建一篇新文章
+
+```bash
+POST /api/posts/sync-to-halo
+Content-Type: application/json
+
+{
+    "mode": "new"
+}
+```
+
+### 方式二：合并多条投稿到一篇文章
+
+```bash
+POST /api/posts/sync-to-halo
+Content-Type: application/json
+
+{
+    "mode": "append"
+}
+```
+
+### 指定投稿 ID 同步
+
+```bash
+POST /api/posts/sync-to-halo
+Content-Type: application/json
+
+{
+    "post_ids": [1, 2, 3],
+    "mode": "new"
+}
+```
 
 ## tduck 表单配置
 
@@ -128,11 +228,6 @@ GET http://localhost:5000/api/tduck/fields
 **修改 `src/hooks/questionnaire_parser.py`：**
 
 ```python
-# ========================================
-# tduck 字段映射配置
-# 【重要】根据你的 tduck 表单修改下面的字段ID！
-# ========================================
-
 # tduck 表单字段ID（从 /api/tduck/fields 接口查看）
 FIELD_CLASS = "input1773416359370"      # 班级字段ID
 FIELD_NAME = "input1773416363353"       # 姓名字段ID
@@ -147,32 +242,8 @@ FIELD_CONTENT = "textarea1773416364971" # 投稿内容字段ID
 SENSITIVE_WORDS = [
     "敏感词1",
     "敏感词2",
-    # 添加更多...
 ]
 ```
-
-### 数据同步 API
-
-#### 手动同步历史数据
-
-```bash
-# 同步所有数据
-POST http://localhost:5000/api/tduck/sync
-
-# 同步指定时间范围的数据
-POST http://localhost:5000/api/tduck/sync
-Content-Type: application/json
-
-{
-    "start_time": "2026-03-01 00:00:00",
-    "end_time": "2026-03-14 23:59:59"
-}
-```
-
-#### tduck 数据同步 API 说明
-
-- **字段同步 API**: `GET /tduck-api/sync/form/fields?apiKey=xxx`
-- **全量数据同步 API**: `GET /tduck-api/sync/form/data?apiKey=xxx&page=1&size=10`
 
 ## 部署指南（运维组）
 
@@ -194,77 +265,36 @@ docker-compose up -d
 docker-compose logs -f
 ```
 
+### 数据持久化
+
+数据库文件存储在 `data/campus_wall.db`，已通过 Docker Volume 持久化。
+
 ### CI/CD 自动部署
 
 推送到 `main` 分支自动触发部署：
 1. 运行测试
-2. 构建 Docker 镜像
-3. 部署到服务器
+2. SSH 到服务器拉取代码
+3. 重建 Docker 镜像
+4. 重启服务
 
-## 目录结构
+## 数据库结构
 
-```
-campus-wall-sync/
-├── src/                      # 源代码
-│   ├── app.py               # Flask 主入口
-│   ├── config.py            # 配置管理
-│   ├── services/            # 服务层
-│   │   ├── halo_client.py   # Halo API 客户端
-│   │   └── tduck_client.py  # tduck API 客户端
-│   ├── hooks/               # 【业务钩子】开发组主要修改这里
-│   │   ├── questionnaire_parser.py
-│   │   ├── content_filter.py
-│   │   └── ai_review.py
-│   └── utils/               # 工具函数
-│       └── logger.py
-├── tests/                   # 测试代码
-├── docker-compose.yml       # Docker 部署配置
-├── Dockerfile               # Docker 镜像
-├── requirements.txt         # Python 依赖
-├── run_local.bat           # 本地启动脚本
-└── config.json.example     # 配置示例
-```
+### posts 表
 
-## API 端点列表
-
-| 端点 | 方法 | 说明 |
+| 字段 | 类型 | 说明 |
 |------|------|------|
-| `/health` | GET | 健康检查 |
-| `/webhook/tduck` | POST | tduck Webhook 接收 |
-| `/api/tduck/fields` | GET | 获取表单字段定义 |
-| `/api/tduck/sync` | POST | 手动触发数据同步 |
-| `/test/halo` | GET | 测试 Halo 连接 |
-| `/test/tduck` | GET | 测试 tduck 连接 |
+| id | INTEGER | 主键 |
+| title | VARCHAR(255) | 投稿标题 |
+| content | TEXT | 投稿内容（Markdown） |
+| author | VARCHAR(100) | 作者 |
+| tags | JSON | 标签列表 |
+| status | VARCHAR(20) | 状态（pending/synced/rejected） |
+| tduck_id | INTEGER | tduck 记录 ID |
+| tduck_serial | INTEGER | tduck 投稿序号 |
+| halo_post_id | VARCHAR(50) | Halo 文章 ID |
+| created_at | DATETIME | 创建时间 |
+| synced_at | DATETIME | 同步时间 |
 
-## 常见问题
-
-**Q: 开发组需要会 Docker 吗？**
-A: 不需要！开发组只需要修改 `src/hooks/` 下的业务代码，部署由运维组负责。
-
-**Q: 如何测试我的代码修改？**
-A: 本地运行 `python -m src.app`，然后用 curl 测试 webhook 接口。
-
-**Q: 如何连接测试环境的 Halo？**
-A: 修改 `config.json` 中的 `halo.api_url` 和 `halo.api_token` 即可。
-
-**Q: tduck 的字段 ID 在哪里查看？**
-A: 启动服务后访问 `http://localhost:5000/api/tduck/fields`，或查看 tduck 后台的表单设计器。
-
-**Q: 如何从问卷星迁移到 tduck？**
-A: 
-1. 在 tduck 创建新表单
-2. 更新 `config.json` 中的 tduck 配置
-3. 修改 `questionnaire_parser.py` 中的字段映射
-4. 使用 `/api/tduck/sync` 接口同步历史数据
-
-## 技术栈
-
-- **后端**: Python 3.11 + Flask
-- **部署**: Docker + 1Panel
-- **CI/CD**: GitHub Actions
-- **博客系统**: Halo
-- **表单系统**: tduck
-
-## 许可证
+## License
 
 MIT License

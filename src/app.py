@@ -1,24 +1,26 @@
 """
 Flask 主入口
 
-校园墙同步服务的HTTP入口，处理 tduck Webhook 并同步到 Halo 博客。
+校园墙同步服务的HTTP入口，处理 tduck Webhook 并存入数据库。
 
 工作流程：
 1. tduck 收到投稿 -> 触发 Webhook -> 本服务接收
 2. 调用 hooks/questionnaire_parser 解析表单数据
 3. 调用 hooks/content_filter 进行敏感词过滤
 4. 调用 hooks/ai_review 进行AI审核（可选）
-5. 审核通过 -> 调用 Halo API 发布到博客
-6. 审核不通过 -> 记录日志，等待人工处理
+5. 审核通过 -> 存入数据库（状态为 pending）
+6. 后续可通过 API 将数据库中的投稿同步到 Halo 博客
 """
 
-import json
 import logging
+from datetime import datetime
 from flask import Flask, request, jsonify
 from src.config import config
 from src.services.tduck_client import TduckClient
 from src.services.halo_client import HaloClient
 from src.utils.logger import setup_logger
+from src.database import init_db, get_session, close_db
+from src.models import Post
 
 
 def create_app() -> Flask:
@@ -30,23 +32,18 @@ def create_app() -> Flask:
     """
     app = Flask(__name__)
 
-    # 从配置读取应用设置
     app_config = config.app
     app.config["DEBUG"] = app_config.get("debug", False)
     app.config["HOST"] = app_config.get("host", "0.0.0.0")
     app.config["PORT"] = app_config.get("port", 5000)
 
-    # 设置日志
     setup_logger(app_config.get("log_level", "INFO"))
     logger = logging.getLogger(__name__)
 
-    # 初始化服务
+    init_db()
+
     tduck_client = TduckClient()
     halo_client = HaloClient()
-
-    # ========================================
-    # 路由定义
-    # ========================================
 
     @app.route("/health", methods=["GET"])
     def health_check():
@@ -63,7 +60,7 @@ def create_app() -> Flask:
         2. 解析表单数据（hooks/questionnaire_parser.py）
         3. 敏感词过滤（hooks/content_filter.py）
         4. AI审核（hooks/ai_review.py，可选）
-        5. 发布到 Halo 博客
+        5. 存入数据库（状态为 pending）
 
         tduck Webhook 配置：
         - URL: http://your-server:5000/webhook/tduck
@@ -73,26 +70,22 @@ def create_app() -> Flask:
         logger.info("收到 tduck Webhook 请求")
 
         try:
-            # 获取请求数据
             data = request.get_json()
             if not data:
                 logger.warning("Webhook 请求体为空")
                 return jsonify({"error": "请求体为空"}), 400
 
-            # ========== 步骤1: 验证数据格式 ==========
             if not tduck_client.validate_webhook_payload(data):
                 logger.warning("Webhook 数据格式验证失败")
                 return jsonify({"error": "数据格式无效"}), 400
 
             logger.info(f"接收到 tduck 投稿，ID: {data.get('id')}, 序号: {data.get('serialNumber')}")
 
-            # ========== 步骤2: 解析表单数据 ==========
             from src.hooks.questionnaire_parser import parse_questionnaire
 
             parsed_data = parse_questionnaire(data)
             logger.info(f"解析后的数据 - 标题: {parsed_data['title']}, 作者: {parsed_data['author']}")
 
-            # ========== 步骤3: 敏感词过滤 ==========
             from src.hooks.content_filter import filter_content
 
             filtered_data = filter_content(parsed_data)
@@ -103,7 +96,6 @@ def create_app() -> Flask:
                     "reason": filtered_data["reason"]
                 }), 200
 
-            # ========== 步骤4: AI审核（可选） ==========
             review_config = config.review
             if review_config.get("enable_ai_review", False):
                 from src.hooks.ai_review import review_content
@@ -116,23 +108,28 @@ def create_app() -> Flask:
                         "reason": review_result["reason"]
                     }), 200
 
-            # ========== 步骤5: 发布到 Halo ==========
-            halo_result = halo_client.create_post(
+            session = get_session()
+            post = Post(
                 title=filtered_data["title"],
                 content=filtered_data["content"],
-                tags=filtered_data.get("tags", [])
+                author=filtered_data.get("author", "匿名"),
+                tags=filtered_data.get("tags", []),
+                status="pending",
+                tduck_id=data.get("id"),
+                tduck_serial=data.get("serialNumber"),
             )
+            session.add(post)
+            session.commit()
 
-            logger.info(f"成功发布到 Halo 博客，Post ID: {halo_result.get('id')}")
+            logger.info(f"投稿已存入数据库，ID: {post.id}")
             return jsonify({
                 "status": "success",
-                "message": "投稿已成功发布",
-                "halo_post_id": halo_result.get("id"),
+                "message": "投稿已存入数据库",
+                "post_id": post.id,
                 "title": filtered_data["title"]
             }), 200
 
         except ValueError as e:
-            # 数据验证错误
             logger.warning(f"数据验证失败: {str(e)}")
             return jsonify({"error": str(e)}), 400
 
@@ -140,12 +137,219 @@ def create_app() -> Flask:
             logger.error(f"处理 Webhook 时发生错误: {str(e)}", exc_info=True)
             return jsonify({"error": f"服务器内部错误: {str(e)}"}), 500
 
+    @app.route("/api/posts", methods=["GET"])
+    def list_posts():
+        """
+        获取投稿列表
+
+        Query Parameters:
+        - status: 按状态筛选 (pending/synced/rejected)
+        - page: 页码，默认 1
+        - size: 每页数量，默认 20
+        """
+        try:
+            status = request.args.get("status")
+            page = int(request.args.get("page", 1))
+            size = int(request.args.get("size", 20))
+
+            session = get_session()
+            query = session.query(Post)
+
+            if status:
+                query = query.filter(Post.status == status)
+
+            total = query.count()
+            posts = query.order_by(Post.created_at.desc()).offset((page - 1) * size).limit(size).all()
+
+            return jsonify({
+                "status": "success",
+                "total": total,
+                "page": page,
+                "size": size,
+                "posts": [p.to_dict() for p in posts]
+            }), 200
+
+        except Exception as e:
+            logger.error(f"获取投稿列表失败: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/posts/<int:post_id>", methods=["GET"])
+    def get_post(post_id: int):
+        """获取单条投稿详情"""
+        try:
+            session = get_session()
+            post = session.query(Post).filter(Post.id == post_id).first()
+
+            if not post:
+                return jsonify({"error": "投稿不存在"}), 404
+
+            return jsonify({
+                "status": "success",
+                "post": post.to_dict()
+            }), 200
+
+        except Exception as e:
+            logger.error(f"获取投稿详情失败: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/posts/<int:post_id>/reject", methods=["POST"])
+    def reject_post(post_id: int):
+        """拒绝投稿（标记为 rejected）"""
+        try:
+            session = get_session()
+            post = session.query(Post).filter(Post.id == post_id).first()
+
+            if not post:
+                return jsonify({"error": "投稿不存在"}), 404
+
+            post.status = "rejected"
+            session.commit()
+
+            logger.info(f"投稿 {post_id} 已标记为拒绝")
+            return jsonify({
+                "status": "success",
+                "message": "投稿已拒绝",
+                "post": post.to_dict()
+            }), 200
+
+        except Exception as e:
+            logger.error(f"拒绝投稿失败: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/posts/sync-to-halo", methods=["POST"])
+    def sync_to_halo():
+        """
+        将待同步的投稿同步到 Halo 博客
+
+        Request Body (可选):
+        {
+            "post_ids": [1, 2, 3],  // 指定投稿ID，不传则同步所有 pending 状态
+            "mode": "append"        // append: 追加到已有文章, new: 创建新文章
+        }
+
+        追加模式：将多条投稿合并到一篇 Halo 文章中
+        """
+        try:
+            body = request.get_json(silent=True) or {}
+            post_ids = body.get("post_ids")
+            mode = body.get("mode", "new")
+
+            session = get_session()
+            query = session.query(Post).filter(Post.status == "pending")
+
+            if post_ids:
+                query = query.filter(Post.id.in_(post_ids))
+
+            posts = query.order_by(Post.created_at.asc()).all()
+
+            if not posts:
+                return jsonify({
+                    "status": "success",
+                    "message": "没有待同步的投稿",
+                    "synced_count": 0
+                }), 200
+
+            if mode == "append":
+                result = _sync_posts_append_mode(posts, halo_client, session, logger)
+            else:
+                result = _sync_posts_new_mode(posts, halo_client, session, logger)
+
+            return jsonify(result), 200
+
+        except Exception as e:
+            logger.error(f"同步到 Halo 失败: {str(e)}", exc_info=True)
+            return jsonify({"error": str(e)}), 500
+
+    def _sync_posts_new_mode(posts, halo_client, session, logger):
+        """每条投稿创建一篇新文章"""
+        success_count = 0
+        error_count = 0
+
+        for post in posts:
+            try:
+                halo_result = halo_client.create_post(
+                    title=post.title,
+                    content=post.content,
+                    tags=post.tags
+                )
+
+                post.status = "synced"
+                post.halo_post_id = str(halo_result.get("id", ""))
+                post.synced_at = datetime.now()
+                session.commit()
+
+                success_count += 1
+                logger.info(f"投稿 {post.id} 已同步到 Halo，文章 ID: {post.halo_post_id}")
+
+            except Exception as e:
+                error_count += 1
+                logger.error(f"同步投稿 {post.id} 失败: {str(e)}")
+
+        return {
+            "status": "completed",
+            "mode": "new",
+            "total": len(posts),
+            "synced_count": success_count,
+            "error_count": error_count
+        }
+
+    def _sync_posts_append_mode(posts, halo_client, session, logger):
+        """将多条投稿追加到一篇已有文章"""
+        if not posts:
+            return {
+                "status": "completed",
+                "mode": "append",
+                "total": 0,
+                "synced_count": 0
+            }
+
+        combined_content = "# 校园墙投稿合集\n\n"
+        combined_content += f"共 {len(posts)} 条投稿\n\n---\n\n"
+
+        for i, post in enumerate(posts, 1):
+            combined_content += f"## 投稿 {i}: {post.title}\n\n"
+            combined_content += post.content
+            combined_content += "\n\n---\n\n"
+
+        first_post = posts[0]
+        title = f"校园墙投稿合集 ({datetime.now().strftime('%Y-%m-%d')})"
+
+        try:
+            halo_result = halo_client.create_post(
+                title=title,
+                content=combined_content,
+                tags=["校园墙投稿"]
+            )
+
+            halo_post_id = str(halo_result.get("id", ""))
+
+            for post in posts:
+                post.status = "synced"
+                post.halo_post_id = halo_post_id
+                post.synced_at = datetime.now()
+
+            session.commit()
+
+            logger.info(f"{len(posts)} 条投稿已合并同步到 Halo，文章 ID: {halo_post_id}")
+
+            return {
+                "status": "completed",
+                "mode": "append",
+                "total": len(posts),
+                "synced_count": len(posts),
+                "halo_post_id": halo_post_id
+            }
+
+        except Exception as e:
+            logger.error(f"合并同步失败: {str(e)}")
+            raise
+
     @app.route("/api/tduck/sync", methods=["POST"])
     def sync_tduck_data():
         """
         手动触发 tduck 数据同步
 
-        从 tduck API 获取所有表单数据并同步到 Halo 博客。
+        从 tduck API 获取所有表单数据并存入数据库。
         用于首次迁移或补同步历史数据。
 
         Request Body (可选):
@@ -157,12 +361,10 @@ def create_app() -> Flask:
         logger.info("收到手动同步请求")
 
         try:
-            # 获取请求参数
             body = request.get_json(silent=True) or {}
             start_time = body.get("start_time")
             end_time = body.get("end_time")
 
-            # 从 tduck API 获取数据
             if start_time or end_time:
                 data = tduck_client.get_form_data(
                     page=1,
@@ -176,32 +378,44 @@ def create_app() -> Flask:
 
             logger.info(f"获取到 {len(records)} 条记录，开始同步...")
 
-            # 解析并同步数据
             from src.hooks.questionnaire_parser import parse_questionnaire
             from src.hooks.content_filter import filter_content
 
+            session = get_session()
             success_count = 0
             skip_count = 0
             error_count = 0
 
             for record in records:
                 try:
-                    # 解析数据
                     parsed_data = parse_questionnaire(record)
 
-                    # 敏感词过滤
                     filtered_data = filter_content(parsed_data)
                     if not filtered_data["passed"]:
                         logger.warning(f"跳过记录 {record.get('id')}: 未通过敏感词过滤")
                         skip_count += 1
                         continue
 
-                    # 发布到 Halo
-                    halo_client.create_post(
+                    existing = session.query(Post).filter(
+                        Post.tduck_id == record.get("id")
+                    ).first()
+
+                    if existing:
+                        logger.debug(f"记录 {record.get('id')} 已存在，跳过")
+                        skip_count += 1
+                        continue
+
+                    post = Post(
                         title=filtered_data["title"],
                         content=filtered_data["content"],
-                        tags=filtered_data.get("tags", [])
+                        author=filtered_data.get("author", "匿名"),
+                        tags=filtered_data.get("tags", []),
+                        status="pending",
+                        tduck_id=record.get("id"),
+                        tduck_serial=record.get("serialNumber"),
                     )
+                    session.add(post)
+                    session.commit()
 
                     success_count += 1
                     logger.info(f"成功同步记录 {record.get('id')}: {filtered_data['title']}")
@@ -272,7 +486,6 @@ def create_app() -> Flask:
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-    # 保留旧接口兼容（可选）
     @app.route("/webhook/questionnaire", methods=["POST"])
     def handle_questionnaire_webhook_legacy():
         """兼容旧版问卷星 Webhook 接口（已弃用）"""
@@ -284,10 +497,6 @@ def create_app() -> Flask:
 
     return app
 
-
-# ========================================
-# 应用启动入口
-# ========================================
 
 def main():
     """主函数，启动 Flask 应用"""
@@ -302,6 +511,7 @@ def main():
     print(f"[启动] 监听地址: http://{host}:{port}")
     print(f"[启动] tduck Webhook: http://{host}:{port}/webhook/tduck")
     print(f"[启动] 健康检查: http://{host}:{port}/health")
+    print(f"[启动] 投稿列表: http://{host}:{port}/api/posts")
 
     app.run(host=host, port=port, debug=debug)
 
