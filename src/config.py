@@ -115,5 +115,10 @@ class Config:
         """获取 tduck 配置"""
         return self._config_data.get("tduck", {})
 
+    @classmethod
+    def reset(cls):
+        """重置配置实例（用于测试）"""
+        cls._instance = None
+
 
 config = Config()

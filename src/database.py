@@ -8,9 +8,8 @@ SQLite 轻量级，无需额外容器，适合中小规模应用。
 import logging
 from pathlib import Path
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, scoped_session
-from src.config import config
+from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
+import src.config
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,7 @@ def get_engine():
     if _engine is not None:
         return _engine
 
-    db_config = config.database
+    db_config = src.config.config.database
     db_path = db_config.get("path", "data/campus_wall.db")
 
     db_file = Path(db_path)
