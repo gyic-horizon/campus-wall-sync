@@ -7,10 +7,16 @@
 标准输出格式：
 {
     "title": "投稿标题",
-    "content": "投稿内容（支持Markdown）",
-    "author": "作者昵称",
-    "tags": ["标签1", "标签2"],  # 可选
-    "category": "分类名称"       # 可选
+    "content": "投稿内容（用户输入的原始内容）",
+    "class_name": "班级",
+    "user_name": "姓名",
+    "wx_nickname": "微信昵称",
+    "wx_openid": "微信openid",
+    "submit_address": "提交地点",
+    "submit_time": "提交时间",
+    "tags": ["标签1", "标签2"],
+    "tduck_id": 123,
+    "tduck_serial": 4
 }
 
 tduck Webhook 数据示例：
@@ -20,7 +26,8 @@ tduck Webhook 数据示例：
     "textarea1773416364971": "我喜欢小红",
     "serialNumber": 4,
     "wxUserInfo": {
-        "nickname": "xiaoming"
+        "nickname": "xiaoming",
+        "openid": "xxx"
     },
     "createTime": "2026-03-14 00:14:05",
     "eventType": "form_data_add"
@@ -44,9 +51,6 @@ logger = logging.getLogger(__name__)
 FIELD_CLASS = "input1773416359370"      # 班级字段ID
 FIELD_NAME = "input1773416363353"       # 姓名字段ID
 FIELD_CONTENT = "textarea1773416364971" # 投稿内容字段ID
-
-# 是否使用微信昵称作为作者名
-USE_WX_NICKNAME = True
 
 
 def parse_questionnaire(raw_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -87,7 +91,7 @@ def parse_questionnaire(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         raw_data: tduck Webhook 发送的原始数据
 
     Returns:
-        标准格式的解析结果
+        结构化的解析结果（原始数据）
 
     Raises:
         ValueError: 必要字段缺失
@@ -107,14 +111,28 @@ def parse_questionnaire(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         form_data = raw_data["originalData"]
         logger.debug("识别为 API 数据，使用 originalData 嵌套结构")
 
-    # 提取投稿内容
+    # 提取投稿内容（必须）
     content = form_data.get(FIELD_CONTENT, "").strip()
     if not content:
         raise ValueError("投稿内容不能为空")
 
-    # 提取班级和姓名（可选，用于构建标题）
-    class_name = form_data.get(FIELD_CLASS, "").strip()
-    user_name = form_data.get(FIELD_NAME, "").strip()
+    # 提取班级和姓名
+    class_name = form_data.get(FIELD_CLASS, "").strip() or None
+    user_name = form_data.get(FIELD_NAME, "").strip() or None
+
+    # 提取微信用户信息
+    wx_info = raw_data.get("wxUserInfo", {})
+    wx_nickname = wx_info.get("nickname", "").strip() or None
+    wx_openid = wx_info.get("openid", "").strip() or None
+    wx_avatar = wx_info.get("headImgUrl", "").strip() or None
+
+    # 如果 wxUserInfo 中没有 openid，尝试从顶层获取
+    if not wx_openid:
+        wx_openid = raw_data.get("wxOpenId", "").strip() or None
+
+    # 提取提交信息
+    submit_address = raw_data.get("submitAddress", "").strip() or None
+    submit_time = raw_data.get("createTime", "").strip() or None
 
     # 构建标题
     if class_name and user_name:
@@ -124,22 +142,8 @@ def parse_questionnaire(raw_data: Dict[str, Any]) -> Dict[str, Any]:
     elif class_name:
         title = f"{class_name}的投稿"
     else:
-        # 如果没有班级和姓名，使用序号或时间
         serial = raw_data.get("serialNumber", "")
-        create_time = raw_data.get("createTime", "未知时间")
-        title = f"投稿-{serial or create_time}"
-
-    # 提取作者（优先使用微信昵称）
-    author = "匿名"
-    if USE_WX_NICKNAME:
-        wx_info = raw_data.get("wxUserInfo", {})
-        wx_nickname = wx_info.get("nickname", "").strip()
-        if wx_nickname:
-            author = wx_nickname
-
-    # 如果没有微信昵称，使用姓名
-    if author == "匿名" and user_name:
-        author = user_name
+        title = f"投稿-{serial or submit_time or '未知'}"
 
     # 提取标签（可选，可以根据班级自动分类）
     tags = []
@@ -147,37 +151,25 @@ def parse_questionnaire(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         tags.append(class_name)
 
     # ========================================
-    # 内容格式化
-    # ========================================
-
-    # 构建格式化的投稿内容
-    meta = (
-        f"**作者**：{author}\n"
-        f"**班级**：{class_name or '未填写'}\n"
-        f"**姓名**：{user_name or '未填写'}\n"
-    )
-
-    footer = (
-        f"> 投稿序号：{raw_data.get('serialNumber', 'N/A')}\n"
-        f"> 提交时间：{raw_data.get('createTime', '未知')}\n"
-        f"> 提交地点：{raw_data.get('submitAddress', '未知')}\n"
-        f"> 来源：tduck 表单投稿\n"
-    )
-
-    formatted_content = f"{meta}\n\n---\n\n{content}\n\n---\n\n{footer}"
-
-    # ========================================
-    # 返回标准格式
+    # 返回结构化数据
     # ========================================
 
     result = {
         "title": title,
-        "content": formatted_content,
-        "author": author,
+        "content": content,
+        "class_name": class_name,
+        "user_name": user_name,
+        "wx_nickname": wx_nickname,
+        "wx_openid": wx_openid,
+        "wx_avatar": wx_avatar,
+        "submit_address": submit_address,
+        "submit_time": submit_time,
         "tags": tags,
+        "tduck_id": raw_data.get("id"),
+        "tduck_serial": raw_data.get("serialNumber"),
     }
 
-    logger.info(f"解析完成 - 标题: {title}, 作者: {author}")
+    logger.info(f"解析完成 - 标题: {title}")
     return result
 
 
@@ -269,7 +261,11 @@ if __name__ == "__main__":
     result = parse_questionnaire(mock_webhook_data)
     print("\n解析结果:")
     print(f"  标题: {result['title']}")
-    print(f"  作者: {result['author']}")
+    print(f"  内容: {result['content']}")
+    print(f"  班级: {result['class_name']}")
+    print(f"  姓名: {result['user_name']}")
+    print(f"  微信昵称: {result['wx_nickname']}")
+    print(f"  微信openid: {result['wx_openid']}")
+    print(f"  提交地点: {result['submit_address']}")
+    print(f"  提交时间: {result['submit_time']}")
     print(f"  标签: {result['tags']}")
-    print(f"\n内容预览:")
-    print(result['content'][:500] + "..." if len(result['content']) > 500 else result['content'])

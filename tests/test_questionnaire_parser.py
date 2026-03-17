@@ -61,19 +61,26 @@ class TestQuestionnaireParser:
         result = parse_questionnaire(REAL_WEBHOOK_DATA)
 
         assert result["title"] == "高一十三班-小明的投稿"
-        assert "我喜欢小红" in result["content"]
-        assert result["author"] == "xiaoming"  # 微信昵称
+        assert result["content"] == "我喜欢小红"
+        assert result["wx_nickname"] == "xiaoming"
+        assert result["wx_openid"] == "888888888888-EUZO7Orkw1QnMvY"
+        assert result["class_name"] == "高一十三班"
+        assert result["user_name"] == "小明"
+        assert result["submit_address"] == "广东省-广州市"
+        assert result["submit_time"] == "2026-03-14 00:14:05"
         assert "高一十三班" in result["tags"]
-        assert "广东省-广州市" in result["content"]  # 提交地点
+        assert result["tduck_id"] == 623899
+        assert result["tduck_serial"] == 4
 
     def test_parse_without_wx_nickname(self):
-        """测试没有微信昵称时使用姓名"""
+        """测试没有微信昵称时的处理"""
         test_data = REAL_WEBHOOK_DATA.copy()
         test_data["wxUserInfo"] = {}  # 空微信信息
 
         result = parse_questionnaire(test_data)
 
-        assert result["author"] == "小明"  # 使用姓名
+        assert result["wx_nickname"] is None
+        assert result["user_name"] == "小明"
         assert "小明的投稿" in result["title"]
 
     def test_parse_minimal_data(self):
@@ -87,8 +94,11 @@ class TestQuestionnaireParser:
 
         result = parse_questionnaire(test_data)
 
-        assert "投稿-5" in result["title"]  # 使用序号
-        assert result["author"] == "匿名"
+        assert "投稿-5" in result["title"]
+        assert result["content"] == "匿名投稿内容"
+        assert result["wx_nickname"] is None
+        assert result["class_name"] is None
+        assert result["user_name"] is None
         assert result["tags"] == []
 
     def test_empty_content_raises_error(self):
@@ -118,8 +128,8 @@ class TestQuestionnaireParser:
         result = parse_questionnaire(api_format_data)
 
         assert result["title"] == "高二(3)班-李四的投稿"
-        assert "API格式测试投稿" in result["content"]
-        assert result["author"] == "李四同学"
+        assert result["content"] == "API格式测试投稿"
+        assert result["wx_nickname"] == "李四同学"
 
     def test_parse_from_api_response(self):
         """测试从 API 响应解析多条记录"""
@@ -184,10 +194,30 @@ class TestQuestionnaireParser:
         assert len(results) == 1  # 只保留有效记录
         assert results[0]["title"] == "投稿-1"
 
-    def test_event_type_field(self):
-        """测试 eventType 字段被正确处理"""
-        result = parse_questionnaire(REAL_WEBHOOK_DATA)
-        
-        # 确保解析成功，eventType 不影响解析
-        assert result["title"] == "高一十三班-小明的投稿"
-        assert "form_data_add" not in result["content"]  # eventType 不应该出现在内容中
+    def test_wx_openid_from_top_level(self):
+        """测试从顶层获取 wx_openid"""
+        test_data = {
+            "serialNumber": 6,
+            "textarea1773416364971": "测试内容",
+            "wxOpenId": "top-level-openid",
+            "wxUserInfo": {},  # 没有 openid
+            "createTime": "2026-03-14 12:00:00"
+        }
+
+        result = parse_questionnaire(test_data)
+
+        assert result["wx_openid"] == "top-level-openid"
+
+    def test_wx_openid_priority(self):
+        """测试 wx_openid 优先从 wxUserInfo 获取"""
+        test_data = {
+            "serialNumber": 7,
+            "textarea1773416364971": "测试内容",
+            "wxOpenId": "top-level-openid",
+            "wxUserInfo": {"openid": "userinfo-openid"},
+            "createTime": "2026-03-14 12:00:00"
+        }
+
+        result = parse_questionnaire(test_data)
+
+        assert result["wx_openid"] == "userinfo-openid"

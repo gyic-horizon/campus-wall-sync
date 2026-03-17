@@ -84,23 +84,25 @@ def create_app() -> Flask:
             from src.hooks.questionnaire_parser import parse_questionnaire
 
             parsed_data = parse_questionnaire(data)
-            logger.info(f"解析后的数据 - 标题: {parsed_data['title']}, 作者: {parsed_data['author']}")
+            logger.info(f"解析后的数据 - 标题: {parsed_data['title']}")
 
             from src.hooks.content_filter import filter_content
 
-            filtered_data = filter_content(parsed_data)
-            if not filtered_data["passed"]:
-                logger.warning(f"内容未通过敏感词过滤: {filtered_data['reason']}")
+            filtered_result = filter_content(parsed_data)
+            if not filtered_result["passed"]:
+                logger.warning(f"内容未通过敏感词过滤: {filtered_result['reason']}")
                 return jsonify({
                     "status": "filtered",
-                    "reason": filtered_data["reason"]
+                    "reason": filtered_result["reason"]
                 }), 200
+
+            filtered_data = filtered_result["data"]
 
             review_config = config.review
             if review_config.get("enable_ai_review", False):
                 from src.hooks.ai_review import review_content
 
-                review_result = review_content(filtered_data["content"])
+                review_result = review_content(filtered_data)
                 if not review_result["approved"]:
                     logger.warning(f"内容未通过AI审核: {review_result['reason']}")
                     return jsonify({
@@ -112,21 +114,28 @@ def create_app() -> Flask:
             post = Post(
                 title=filtered_data["title"],
                 content=filtered_data["content"],
-                author=filtered_data.get("author", "匿名"),
+                class_name=filtered_data.get("class_name"),
+                user_name=filtered_data.get("user_name"),
+                wx_nickname=filtered_data.get("wx_nickname"),
+                wx_openid=filtered_data.get("wx_openid"),
+                wx_avatar=filtered_data.get("wx_avatar"),
+                submit_address=filtered_data.get("submit_address"),
+                submit_time=filtered_data.get("submit_time"),
                 tags=filtered_data.get("tags", []),
                 status="pending",
-                tduck_id=data.get("id"),
-                tduck_serial=data.get("serialNumber"),
+                tduck_id=filtered_data.get("tduck_id"),
+                tduck_serial=filtered_data.get("tduck_serial"),
             )
             session.add(post)
             session.commit()
 
-            logger.info(f"投稿已存入数据库，ID: {post.id}")
+            logger.info(f"投稿已存入数据库，ID: {post.id}, 作者: {post.author}")
             return jsonify({
                 "status": "success",
                 "message": "投稿已存入数据库",
                 "post_id": post.id,
-                "title": filtered_data["title"]
+                "title": filtered_data["title"],
+                "author": post.author
             }), 200
 
         except ValueError as e:
@@ -269,7 +278,7 @@ def create_app() -> Flask:
             try:
                 halo_result = halo_client.create_post(
                     title=post.title,
-                    content=post.content,
+                    content=post.to_markdown(),
                     tags=post.tags
                 )
 
@@ -308,10 +317,9 @@ def create_app() -> Flask:
 
         for i, post in enumerate(posts, 1):
             combined_content += f"## 投稿 {i}: {post.title}\n\n"
-            combined_content += post.content
+            combined_content += post.to_markdown()
             combined_content += "\n\n---\n\n"
 
-        first_post = posts[0]
         title = f"校园墙投稿合集 ({datetime.now().strftime('%Y-%m-%d')})"
 
         try:
@@ -390,35 +398,43 @@ def create_app() -> Flask:
                 try:
                     parsed_data = parse_questionnaire(record)
 
-                    filtered_data = filter_content(parsed_data)
-                    if not filtered_data["passed"]:
+                    filtered_result = filter_content(parsed_data)
+                    if not filtered_result["passed"]:
                         logger.warning(f"跳过记录 {record.get('id')}: 未通过敏感词过滤")
                         skip_count += 1
                         continue
 
+                    filtered_data = filtered_result["data"]
+
                     existing = session.query(Post).filter(
-                        Post.tduck_id == record.get("id")
+                        Post.tduck_id == filtered_data.get("tduck_id")
                     ).first()
 
                     if existing:
-                        logger.debug(f"记录 {record.get('id')} 已存在，跳过")
+                        logger.debug(f"记录 {filtered_data.get('tduck_id')} 已存在，跳过")
                         skip_count += 1
                         continue
 
                     post = Post(
                         title=filtered_data["title"],
                         content=filtered_data["content"],
-                        author=filtered_data.get("author", "匿名"),
+                        class_name=filtered_data.get("class_name"),
+                        user_name=filtered_data.get("user_name"),
+                        wx_nickname=filtered_data.get("wx_nickname"),
+                        wx_openid=filtered_data.get("wx_openid"),
+                        wx_avatar=filtered_data.get("wx_avatar"),
+                        submit_address=filtered_data.get("submit_address"),
+                        submit_time=filtered_data.get("submit_time"),
                         tags=filtered_data.get("tags", []),
                         status="pending",
-                        tduck_id=record.get("id"),
-                        tduck_serial=record.get("serialNumber"),
+                        tduck_id=filtered_data.get("tduck_id"),
+                        tduck_serial=filtered_data.get("tduck_serial"),
                     )
                     session.add(post)
                     session.commit()
 
                     success_count += 1
-                    logger.info(f"成功同步记录 {record.get('id')}: {filtered_data['title']}")
+                    logger.info(f"成功同步记录 {filtered_data.get('tduck_id')}: {filtered_data['title']}")
 
                 except ValueError as e:
                     logger.warning(f"跳过无效记录 {record.get('id')}: {e}")

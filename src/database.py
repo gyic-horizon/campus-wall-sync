@@ -8,7 +8,7 @@ SQLite 轻量级，无需额外容器，适合中小规模应用。
 import logging
 from pathlib import Path
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
 import src.config
 
 logger = logging.getLogger(__name__)

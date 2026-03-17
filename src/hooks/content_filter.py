@@ -56,26 +56,24 @@ def filter_content(data: Dict[str, Any]) -> Dict[str, Any]:
     【修改这里的代码来实现你的审核逻辑】
 
     Args:
-        data: 解析后的标准格式数据，包含 title, content, author 等字段
+        data: 解析后的结构化数据
 
     Returns:
         审核结果 {
             "passed": True/False,
             "reason": "如果未通过，说明原因",
-            "content": "处理后的内容（如果启用替换）"
+            "data": 处理后的数据（如果启用替换）
         }
     """
     logger.info("开始敏感词过滤...")
 
     title = data.get("title", "")
     content = data.get("content", "")
-    author = data.get("author", "")
+    wx_openid = data.get("wx_openid", "")
 
-    # 检查作者是否在黑名单
-    # 如果你有用户黑名单功能，可以在这里添加
-    author_blocked = check_author_blacklist(author)
-    if author_blocked:
-        logger.warning(f"作者 {author} 在黑名单中")
+    # 检查用户是否在黑名单（使用 wx_openid）
+    if wx_openid and check_user_blacklist(wx_openid):
+        logger.warning(f"用户 {wx_openid} 在黑名单中")
         return {
             "passed": False,
             "reason": "该用户已被加入黑名单"
@@ -100,14 +98,14 @@ def filter_content(data: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     # 如果启用替换模式，返回替换后的内容
-    filtered_content = content
+    filtered_data = data.copy()
     if REPLACE_MODE:
-        filtered_content = content_check.get("filtered", content)
+        filtered_data["content"] = content_check.get("filtered", content)
 
     logger.info("敏感词过滤通过")
     return {
         "passed": True,
-        "content": filtered_content
+        "data": filtered_data
     }
 
 
@@ -156,12 +154,12 @@ def check_sensitive_words(text: str) -> Dict[str, Any]:
     return {"passed": True}
 
 
-def check_author_blacklist(author: str) -> bool:
+def check_user_blacklist(wx_openid: str) -> bool:
     """
-    检查作者是否在黑名单
+    检查用户是否在黑名单
 
     Args:
-        author: 作者名称
+        wx_openid: 微信 openid
 
     Returns:
         是否在黑名单
@@ -169,7 +167,7 @@ def check_author_blacklist(author: str) -> bool:
     # 黑名单列表（可以改成从数据库读取）
     blacklist = []
 
-    return author in blacklist
+    return wx_openid in blacklist
 
 
 # ========================================
@@ -213,5 +211,5 @@ if __name__ == "__main__":
     print(f"  通过: {result['passed']}")
     if not result["passed"]:
         print(f"  原因: {result['reason']}")
-    if "content" in result:
-        print(f"  处理后内容: {result['content'][:50]}...")
+    if "data" in result:
+        print(f"  处理后内容: {result['data'][:50]}...")

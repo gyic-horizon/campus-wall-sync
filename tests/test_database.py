@@ -53,7 +53,7 @@ class TestDatabase:
             post = Post(
                 title="测试投稿",
                 content="这是测试内容",
-                author="测试作者",
+                wx_nickname="测试作者",
                 tags=["标签1", "标签2"],
                 status="pending",
                 tduck_id=123,
@@ -65,6 +65,7 @@ class TestDatabase:
             assert post.id is not None
             assert post.title == "测试投稿"
             assert post.status == "pending"
+            assert post.author == "测试作者"
             
             self._cleanup_test_db()
 
@@ -76,7 +77,9 @@ class TestDatabase:
             post = Post(
                 title="测试投稿",
                 content="这是测试内容",
-                author="测试作者",
+                wx_nickname="测试作者",
+                user_name="真实姓名",
+                class_name="高一(1)班",
                 status="pending"
             )
             session.add(post)
@@ -87,8 +90,82 @@ class TestDatabase:
             assert data["title"] == "测试投稿"
             assert data["content"] == "这是测试内容"
             assert data["author"] == "测试作者"
+            assert data["wx_nickname"] == "测试作者"
+            assert data["user_name"] == "真实姓名"
+            assert data["class_name"] == "高一(1)班"
             assert data["status"] == "pending"
             assert "created_at" in data
+            
+            self._cleanup_test_db()
+
+    def test_author_property_priority(self):
+        """测试 author 属性的优先级"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session = self._setup_test_db(tmpdir)
+            
+            # 有微信昵称
+            post1 = Post(
+                title="测试1",
+                content="内容1",
+                wx_nickname="微信昵称",
+                user_name="真实姓名",
+                status="pending"
+            )
+            session.add(post1)
+            
+            # 没有微信昵称，有姓名
+            post2 = Post(
+                title="测试2",
+                content="内容2",
+                wx_nickname=None,
+                user_name="真实姓名",
+                status="pending"
+            )
+            session.add(post2)
+            
+            # 都没有
+            post3 = Post(
+                title="测试3",
+                content="内容3",
+                status="pending"
+            )
+            session.add(post3)
+            session.commit()
+            
+            assert post1.author == "微信昵称"
+            assert post2.author == "真实姓名"
+            assert post3.author == "匿名"
+            
+            self._cleanup_test_db()
+
+    def test_post_to_markdown(self):
+        """测试 Post 模型的 to_markdown 方法"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session = self._setup_test_db(tmpdir)
+            
+            post = Post(
+                title="测试投稿",
+                content="这是投稿内容",
+                wx_nickname="测试作者",
+                user_name="小明",
+                class_name="高一(1)班",
+                submit_address="广东省-广州市",
+                submit_time="2026-03-14 00:14:05",
+                tduck_serial=1,
+                status="pending"
+            )
+            session.add(post)
+            session.commit()
+            
+            markdown = post.to_markdown()
+            
+            assert "**作者**：测试作者" in markdown
+            assert "**班级**：高一(1)班" in markdown
+            assert "**姓名**：小明" in markdown
+            assert "这是投稿内容" in markdown
+            assert "> 投稿序号：1" in markdown
+            assert "> 提交时间：2026-03-14 00:14:05" in markdown
+            assert "> 提交地点：广东省-广州市" in markdown
             
             self._cleanup_test_db()
 
