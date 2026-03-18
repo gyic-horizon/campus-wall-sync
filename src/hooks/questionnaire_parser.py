@@ -59,7 +59,7 @@ def parse_questionnaire(raw_data: Dict[str, Any]) -> Dict[str, Any]:
 
     【修改这里的代码来适配你的表单】
 
-    tduck Webhook 数据结构：
+    tduck Webhook 数据结构 (以数据推送返回结构为例)：
     {
         // 表单字段（直接在顶层）
         "input1773416359370": "高一十三班",

@@ -70,10 +70,11 @@ def filter_content(data: Dict[str, Any]) -> Dict[str, Any]:
     title = data.get("title", "")
     content = data.get("content", "")
     wx_openid = data.get("wx_openid", "")
+    wx_nickname = data.get("wx_nickname", "")
 
     # 检查用户是否在黑名单（使用 wx_openid）
     if wx_openid and check_user_blacklist(wx_openid):
-        logger.warning(f"用户 {wx_openid} 在黑名单中")
+        logger.warning(f'用户 "{wx_nickname}"({wx_openid}) 在黑名单中')
         return {
             "passed": False,
             "reason": "该用户已被加入黑名单"
@@ -203,7 +204,7 @@ if __name__ == "__main__":
     test_data = {
         "title": "表白墙-今天天气真好",
         "content": "大家好，我想发个投稿，这是一条垃圾广告内容",
-        "author": "小明"
+        "user_name": "小明"
     }
 
     result = filter_content(test_data)

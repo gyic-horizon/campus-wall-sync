@@ -84,7 +84,7 @@ def create_app() -> Flask:
             from src.hooks.questionnaire_parser import parse_questionnaire
 
             parsed_data = parse_questionnaire(data)
-            logger.info(f"解析后的数据 - 标题: {parsed_data['title']}")
+            logger.info(f"解析后的数据 - 标题: {parsed_data['title']}, 作者姓名: {parsed_data['user_name']}")
 
             from src.hooks.content_filter import filter_content
 
@@ -129,7 +129,7 @@ def create_app() -> Flask:
             session.add(post)
             session.commit()
 
-            logger.info(f"投稿已存入数据库，ID: {post.id}, 作者: {post.author}")
+            logger.info(f"投稿已存入数据库，ID: {post.id}, 作者: {post.user_name}")
             return jsonify({
                 "status": "success",
                 "message": "投稿已存入数据库",
