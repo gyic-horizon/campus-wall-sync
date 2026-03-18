@@ -1,32 +1,41 @@
 {
+    "_comment": "配置文件说明：请复制此文件为 config.json 并填写实际值",
+
     "app": {
         "debug": false,
         "host": "0.0.0.0",
         "port": 5000,
-        "log_level": "INFO"
+        "log_level": "INFO",
+        "_comment": "Flask 应用配置"
     },
+
     "database": {
         "path": "data/campus_wall.db",
-        "echo": false
+        "echo": false,
+        "_comment": "SQLite 数据库配置，path 为数据库文件路径"
     },
+
     "halo": {
         "api_url": "https://your-halo-site.com",
         "api_token": "your-api-token-here",
         "site_name": "campus-blog",
         "timeout": 30,
         "default_category": "表白墙",
-        "default_tags": ["投稿", "校园墙"]
+        "default_tags": ["投稿", "校园墙"],
+        "_comment": "Halo 博客 API 配置，用于同步投稿到博客"
     },
+
     "tduck": {
         "enabled": true,
-        "webhook_secret": "your-tduck-webhook-secret",
         "api_key": "your-tduck-api-key",
-        "form_key": "your-form-key",
-        "base_url": "https://x.tduckcloud.com"
+        "base_url": "https://x.tduckcloud.com",
+        "_comment": "tduck 表单平台配置，api_key 用于调用数据同步 API"
     },
+
     "review": {
         "enable_ai_review": false,
         "ai_review_type": "openai",
-        "openai_api_key": "your-openai-api-key"
+        "openai_api_key": "your-openai-api-key",
+        "_comment": "内容审核配置，enable_ai_review 为 true 时启用 AI 审核"
     }
 }

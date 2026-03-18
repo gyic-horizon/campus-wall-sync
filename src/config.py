@@ -5,9 +5,10 @@
 开发组只需要修改 config.json，不需要碰代码。
 
 配置文件结构说明：
-- app: Flask应用配置
-- halo: Halo博客API配置
-- questionnaire: 问卷星Webhook配置
+- app: Flask 应用配置
+- database: SQLite 数据库配置
+- halo: Halo 博客 API 配置
+- tduck: tduck 表单平台配置
 - review: 审核配置（人工/AI）
 """
 

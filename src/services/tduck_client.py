@@ -30,7 +30,6 @@ class TduckClient:
         # API 配置
         self.base_url = tduck_config.get("base_url", "https://x.tduckcloud.com")
         self.api_key = tduck_config.get("api_key", "")
-        self.form_key = tduck_config.get("form_key", "")
 
         # 请求超时设置
         self.timeout = tduck_config.get("timeout", 30)
