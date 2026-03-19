@@ -37,20 +37,20 @@ tduck Webhook 数据示例：
 
 from typing import Dict, Any, List
 import logging
+from src.config import config
 
 logger = logging.getLogger(__name__)
 
 
 # ========================================
 # tduck 字段映射配置
-# 【重要】根据你的 tduck 表单修改下面的字段ID！
 # ========================================
 
-# tduck 表单字段ID（从字段同步API或表单设计器查看）
-# 示例值来自: https://x.tduckcloud.com/tduck-api/sync/form/fields
-FIELD_CLASS = "input1773416359370"      # 班级字段ID
-FIELD_NAME = "input1773416363353"       # 姓名字段ID
-FIELD_CONTENT = "textarea1773416364971" # 投稿内容字段ID
+# 从配置文件读取字段 ID（优先），如果没有配置则使用默认值
+tduck_field_ids = config.tduck.get("field_ids", {})
+FIELD_CLASS = tduck_field_ids.get("class", "input1773416359370")      # 班级字段 ID
+FIELD_NAME = tduck_field_ids.get("name", "input1773416363353")        # 姓名字段 ID
+FIELD_CONTENT = tduck_field_ids.get("content", "textarea1773416364971")  # 投稿内容字段 ID
 
 
 def parse_questionnaire(raw_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -114,7 +114,10 @@ def parse_questionnaire(raw_data: Dict[str, Any]) -> Dict[str, Any]:
     # 提取投稿内容（必须）
     content = form_data.get(FIELD_CONTENT, "").strip()
     if not content:
-        raise ValueError("投稿内容不能为空")
+        # 调试信息：打印所有可用字段
+        available_fields = list(form_data.keys())
+        logger.error(f"字段 '{FIELD_CONTENT}' 未找到！可用字段：{available_fields}")
+        raise ValueError(f"投稿内容不能为空（字段 ID: {FIELD_CONTENT}，可用字段：{', '.join(available_fields)}...)")
 
     # 提取班级和姓名
     class_name = form_data.get(FIELD_CLASS, "").strip() or None

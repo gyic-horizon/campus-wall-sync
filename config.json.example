@@ -29,7 +29,13 @@
         "enabled": true,
         "api_key": "your-tduck-api-key",
         "base_url": "https://x.tduckcloud.com",
-        "_comment": "tduck 表单平台配置，api_key 用于调用数据同步 API"
+        "_comment": "tduck 表单平台配置",
+        "field_ids": {
+            "class": "input1773416359370",
+            "name": "input1773416363353",
+            "content": "textarea1773416364971",
+            "_comment": "表单字段 ID 映射，可通过 /api/tduck/fields 查看"
+        }
     },
 
     "review": {
