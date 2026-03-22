@@ -72,7 +72,7 @@ class TduckClient:
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
-            self.logger.error(f"请求 tduck API 失败: {e}")
+            self.logger.error(f"请求 tduck API 失败: {e}", exc_info=True)
             raise
 
     def get_form_fields(self) -> List[Dict[str, Any]]:

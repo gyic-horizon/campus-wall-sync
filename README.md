@@ -180,13 +180,12 @@ Content-Type: application/json
 
 ### 1. 获取 API Key
 
-在 tduck 后台 → 表单设置 → API 设置 中获取：
+在 tduck 后台 → 对应表单 → 发布 → 数据推送 中获取：
 - **API Key**: 用于访问数据同步 API
-- **Form Key**: 表单唯一标识
 
 ### 2. 配置 Webhook
 
-在 tduck 后台 → 表单设置 → Webhook 推送：
+在 tduck 后台 → 对应表单 → 发布 → 数据推送 中配置：
 
 - **推送地址**: `http://your-server:5000/webhook/tduck`
 - **请求方式**: POST

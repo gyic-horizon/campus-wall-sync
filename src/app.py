@@ -179,7 +179,7 @@ def create_app() -> Flask:
             }), 200
 
         except Exception as e:
-            logger.error(f"获取投稿列表失败: {str(e)}")
+            logger.error(f"获取投稿列表失败: {str(e)}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/posts/<int:post_id>", methods=["GET"])
@@ -198,7 +198,7 @@ def create_app() -> Flask:
             }), 200
 
         except Exception as e:
-            logger.error(f"获取投稿详情失败: {str(e)}")
+            logger.error(f"获取投稿详情失败: {str(e)}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/posts/<int:post_id>/reject", methods=["POST"])
@@ -292,7 +292,7 @@ def create_app() -> Flask:
 
             except Exception as e:
                 error_count += 1
-                logger.error(f"同步投稿 {post.id} 失败: {str(e)}")
+                logger.error(f"同步投稿 {post.id} 失败: {str(e)}", exc_info=True)
 
         return {
             "status": "completed",
@@ -349,7 +349,7 @@ def create_app() -> Flask:
             }
 
         except Exception as e:
-            logger.error(f"合并同步失败: {str(e)}")
+            logger.error(f"合并同步失败: {str(e)}", exc_info=True)
             raise
 
     @app.route("/api/tduck/sync", methods=["POST"])
@@ -478,7 +478,7 @@ def create_app() -> Flask:
             }), 200
 
         except Exception as e:
-            logger.error(f"获取字段定义失败: {str(e)}")
+            logger.error(f"获取字段定义失败: {str(e)}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route("/test/halo", methods=["GET"])

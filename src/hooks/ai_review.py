@@ -239,8 +239,7 @@ def openai_review(title: str, content: str, author: str) -> Dict[str, Any]:
         logger.warning("未安装openai库，跳过AI审核")
         return {"approved": True, "reason": "未安装AI审核库"}
     except Exception as e:
-        logger.error(f"OpenAI审核失败: {str(e)}")
-        # 审核失败时默认通过，避免阻塞正常投稿
+        logger.error(f"OpenAI审核失败: {str(e)}", exc_info=True)
         return {"approved": True, "reason": f"AI审核服务异常: {str(e)}"}
 
 

@@ -79,7 +79,7 @@ class HaloClient:
             return response.json()
 
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Halo API请求失败: {str(e)}")
+            self.logger.error(f"Halo API请求失败: {str(e)}", exc_info=True)
             raise
 
     def test_connection(self) -> Dict[str, Any]:
@@ -205,5 +205,5 @@ class HaloClient:
             self.logger.info(f"文章删除成功，ID: {post_id}")
             return True
         except Exception as e:
-            self.logger.error(f"文章删除失败: {str(e)}")
+            self.logger.error(f"文章删除失败: {str(e)}", exc_info=True)
             return False
