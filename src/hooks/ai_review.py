@@ -27,6 +27,7 @@ AI内容审核钩子
 
 from typing import Dict, Any
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +169,6 @@ def simple_rule_review(title: str, content: str, author: str) -> Dict[str, Any]:
     # 检查是否包含联系方式（防止私下交易）
     phone_pattern = r"1[3-9]\d{9}"
     if len(content) > 50:  # 内容较长时才检查，避免误伤
-        import re
         if re.search(phone_pattern, content):
             return {
                 "approved": False,
