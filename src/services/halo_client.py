@@ -36,13 +36,14 @@ class HaloClient:
         # 请求超时设置
         self.timeout = halo_config.get("timeout", 30)
 
-        # 请求头
-        self.headers = {
+        self.logger = logging.getLogger(__name__)
+
+    def _get_headers(self) -> Dict[str, str]:
+        """动态构建请求头，避免 token 被记录到内存"""
+        return {
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type": "application/json"
         }
-
-        self.logger = logging.getLogger(__name__)
 
     def _make_request(
         self,
@@ -71,7 +72,7 @@ class HaloClient:
             response = requests.request(
                 method=method,
                 url=url,
-                headers=self.headers,
+                headers=self._get_headers(),
                 json=data,
                 timeout=self.timeout
             )

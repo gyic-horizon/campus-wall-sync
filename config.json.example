@@ -43,5 +43,10 @@
         "ai_review_type": "openai",
         "openai_api_key": "YOUR-OPENAI-API-KEY",
         "_comment": "内容审核配置，enable_ai_review 为 true 时启用 AI 审核"
+    },
+
+    "content_filter": {
+        "replace_mode": true,
+        "_comment": "敏感词过滤模式：true=替换为***后通过，false=直接拒绝"
     }
 }

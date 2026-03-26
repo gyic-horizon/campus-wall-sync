@@ -25,6 +25,7 @@
 from typing import Dict, Any, List
 import re
 import logging
+from src.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -36,17 +37,28 @@ logger = logging.getLogger(__name__)
 
 # 简单敏感词列表（实际使用建议用第三方库或数据库）
 SENSITIVE_WORDS = [
-    # 政治相关（示例，实际根据需求配置）
     "敏感词1",
     "敏感词2",
-    # 色情低俗
     "垃圾广告",
     "赌博",
-    # 其他违规词...
 ]
 
-# 是否启用敏感词替换（替换为***）还是直接拒绝
-REPLACE_MODE = True  # True=替换为***, False=直接拒绝
+_REPLACE_PATTERN = None
+
+
+def _get_replace_pattern() -> re.Pattern:
+    """获取敏感词替换的正则表达式（惰性求值，缓存编译结果）"""
+    global _REPLACE_PATTERN
+    if _REPLACE_PATTERN is None:
+        escaped_words = [re.escape(word) for word in SENSITIVE_WORDS]
+        pattern_str = "|".join(escaped_words)
+        _REPLACE_PATTERN = re.compile(pattern_str) if pattern_str else None
+    return _REPLACE_PATTERN
+
+
+def _is_replace_mode() -> bool:
+    """从配置读取敏感词过滤模式"""
+    return config.content_filter.get("replace_mode", True)
 
 
 def filter_content(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -100,7 +112,7 @@ def filter_content(data: Dict[str, Any]) -> Dict[str, Any]:
 
     # 如果启用替换模式，返回替换后的内容
     filtered_data = data.copy()
-    if REPLACE_MODE:
+    if _is_replace_mode():
         filtered_data["content"] = content_check.get("filtered", content)
 
     logger.info("敏感词过滤通过")
@@ -135,13 +147,11 @@ def check_sensitive_words(text: str) -> Dict[str, Any]:
             matched_words.append(word)
 
     if matched_words:
-        if REPLACE_MODE:
-            # 替换模式：把敏感词替换为***
-            filtered_text = text
-            for word in matched_words:
-                filtered_text = filtered_text.replace(word, "***")
+        if _is_replace_mode():
+            pattern = _get_replace_pattern()
+            filtered_text = pattern.sub("***", text) if pattern else text
             return {
-                "passed": True,  # 替换后通过
+                "passed": True,
                 "matched": ", ".join(matched_words),
                 "filtered": filtered_text
             }

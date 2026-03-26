@@ -116,6 +116,11 @@ class Config:
         """获取 tduck 配置"""
         return self._config_data.get("tduck", {})
 
+    @property
+    def content_filter(self) -> Dict[str, Any]:
+        """获取内容过滤配置"""
+        return self._config_data.get("content_filter", {})
+
     @classmethod
     def reset(cls):
         """重置配置实例（用于测试）"""

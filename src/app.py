@@ -511,6 +511,13 @@ def create_app() -> Flask:
             "message": "请使用新的 Webhook 端点: /webhook/tduck"
         }), 410
 
+    @app.teardown_appcontext
+    def shutdown_session(exception=None):
+        """请求结束后自动关闭数据库会话"""
+        from src.database import _session_factory
+        if _session_factory is not None:
+            _session_factory.remove()
+
     return app
 
 
