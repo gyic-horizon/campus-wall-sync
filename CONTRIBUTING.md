@@ -211,6 +211,15 @@ class TduckClient:
 ### 1. 本地开发
 
 ```bash
+# 方式一：一键启动（推荐）
+# Windows 用户：
+run_local.bat
+
+# Linux 用户（需先赋予执行权限）：
+chmod +x run_local.sh
+./run_local.sh
+
+# 方式二：手动启动
 # 安装依赖
 pip install -r requirements.txt
 
@@ -218,7 +227,8 @@ pip install -r requirements.txt
 cp config.json.example config.json
 
 # 编辑配置
-notepad config.json
+# Windows: notepad config.json
+# Linux:   nano config.json  （或 vim、gedit 等）
 
 # 启动服务
 python -m src.app

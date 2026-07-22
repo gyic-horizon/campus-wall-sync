@@ -49,7 +49,11 @@
 # 方式一：Windows 双击运行
 run_local.bat
 
-# 方式二：命令行
+# 方式二：Linux 运行（需先赋予执行权限）
+chmod +x run_local.sh
+./run_local.sh
+
+# 方式三：命令行
 pip install -r requirements.txt
 python -m src.app
 ```
